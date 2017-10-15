@@ -1,4 +1,5 @@
 #include <iostream>
+#include <string.h>
 #include <VisItControlInterface_V2.h>
 #include <VisItDataInterface_V2.h>
 
@@ -9,68 +10,6 @@ typedef struct
   int runMode;
   int done;
 } SimulationData;
-
-void simulateOneTimeStep(SimulationData &sim)
-{
-  /*simulate one time step*/
-}
-
-void constructSimulationData(SimulationData &sim)
-{
-  /*construct simulation object*/
-  sim.cycle = 0;
-  sim.time = 0.0f;
-  sim.runMode = 1;
-  sim.done = false;
-}
-
-void readInputDeck(SimulationData &sim)
-{
-}
-
-void dumpVisualization(SimulationData &sim)
-{
-}
-
-visit_handle GetSimulationMetaData(void *simData)
-{
-  visit_handle md = VISIT_INVALID_HANDLE;
-  SimulationData *sim = (SimulationData*)simData;
-  /*metadata with no variables*/
-  if(VisIt_SimulationMetaData_alloc(&md) == VISIT_OKAY)
-  {
-    /*set the simulation state*/
-    if(sim->runMode == VISIT_SIMMODE_STOPPED)
-      VisIt_SimulationMetaData_setMode(md, VISIT_SIMMODE_STOPPED);
-    else
-      VisIt_SimulationMetaData_setMode(md, VISIT_SIMMODE_RUNNING);
-    VisIt_SimulationMetaData_setCycleTime(md, sim->cycle, sim->time);
-
-    visit_handle mesh2d;
-    if(VisIt_MeshMetaData_alloc(&mesh2d) == VISIT_OKAY)
-    {
-    VisIt_MeshMetaData_setName(mesh2d, "mesh2d");
-    VisIt_MeshMetaData_setMeshType(mesh2d, VISIT_MESHTYPE_RECTILINEAR);
-    VisIt_MeshMetaData_setTopologicalDimension(mesh2d, 2);
-    VisIt_MeshMetaData_setSpatialDimension(mesh2d, 2);
-    VisIt_MeshMetaData_setXUnits(mesh2d, "cm");
-    VisIt_MeshMetaData_setXUnits(mesh2d, "cm");
-    VisIt_MeshMetaData_setXLabel(mesh2d, "Width");
-    VisIt_MeshMetaData_setYLabel(mesh2d, "Height");
-    VisIt_SimulationMetaData_addMesh(md, mesh2d);
-    }
-    visit_handle meshVar;
-    if(VisIt_VariableMetaData_alloc(&meshVar) == VISIT_OKAY)
-    {
-      VisIt_VariableMetaData_setName(meshVar, "nodal");
-      VisIt_VariableMetaData_setMeshName(meshVar, "mesh2d");
-      VisIt_VariableMetaData_setType(meshVar, VISIT_VARTYPE_SCALAR);
-      VisIt_VariableMetaData_setCentering(meshVar, VISIT_VARCENTERING_NODE);
-      VisIt_SimulationMetaData_addVariable(md, meshVar);
-    }
-  }
-  return md;
-}
 
 float meshx[] = {0, 1, 2, 3};
 float meshy[] = {0, 1, 2, 3};
@@ -92,13 +31,120 @@ visit_handle GetSimulationMesh(int domain, const char * name, void *simData)
   return mesh;
 }
 
+visit_handle GetSimulationVariable(int domain, const char *name, void *simData)
+{
+  int components = 1;
+  int tuples = 4 * 4;
+  float data[] =
+  { 1.0f, 1.0f, 1.0f, 1.0f,
+    1.0f, 2.0f, 2.0f, 1.0f,
+    1.0f, 2.0f, 2.0f, 1.0f,
+    1.0f, 1.0f, 1.0f, 1.0f };
+
+  visit_handle var = VISIT_INVALID_HANDLE;
+  if(VisIt_VariableData_alloc(&var) == VISIT_OKAY)
+  {
+    VisIt_VariableData_setDataF(var, VISIT_OWNER_SIM, components, tuples, data);
+  }
+  return var;
+}
+
+void simulateOneTimeStep(SimulationData &sim)
+{
+  /*simulate one time step*/
+  VisItSetGetMesh(GetSimulationMesh, (void*)&sim);
+  VisItSetGetVariable(GetSimulationVariable, (void*)&sim);
+}
+
+void constructSimulationData(SimulationData &sim)
+{
+  /*construct simulation object*/
+  sim.cycle = 0;
+  sim.time = 0.0f;
+  sim.runMode = 1;
+  sim.done = false;
+}
+
+/*void readInputDeck(SimulationData &sim)
+{
+
+}
+
+void dumpVisualization(SimulationData &sim)
+{
+
+}*/
+
+void ControlCommandCallback(const char *cmd, const char *args, void *simData)
+{
+  SimulationData *sim = (SimulationData*)simData;
+  if(strcmp(cmd, "halt") == 0)
+    sim->runMode = VISIT_SIMMODE_STOPPED;
+  else if(strcmp(cmd, "step") == 0)
+    simulateOneTimeStep(sim);
+  else if(strcmp(cmd, "run") == 0)
+    sim->runMode = VISIT_SIMMODE_RUNNING;
+}
+
+visit_handle GetSimulationMetaData(void *simData)
+{
+  visit_handle md = VISIT_INVALID_HANDLE;
+  SimulationData *sim = (SimulationData*)simData;
+  /*metadata with no variables*/
+  if(VisIt_SimulationMetaData_alloc(&md) == VISIT_OKAY)
+  {
+    /*set the simulation state*/
+    if(sim->runMode == VISIT_SIMMODE_STOPPED)
+      VisIt_SimulationMetaData_setMode(md, VISIT_SIMMODE_STOPPED);
+    else
+      VisIt_SimulationMetaData_setMode(md, VISIT_SIMMODE_RUNNING);
+    VisIt_SimulationMetaData_setCycleTime(md, sim->cycle, sim->time);
+
+    visit_handle mesh2d;
+    if(VisIt_MeshMetaData_alloc(&mesh2d) == VISIT_OKAY)
+    {
+      VisIt_MeshMetaData_setName(mesh2d, "mesh2d");
+      VisIt_MeshMetaData_setMeshType(mesh2d, VISIT_MESHTYPE_RECTILINEAR);
+      VisIt_MeshMetaData_setTopologicalDimension(mesh2d, 2);
+      VisIt_MeshMetaData_setSpatialDimension(mesh2d, 2);
+      VisIt_MeshMetaData_setXUnits(mesh2d, "cm");
+      VisIt_MeshMetaData_setXUnits(mesh2d, "cm");
+      VisIt_MeshMetaData_setXLabel(mesh2d, "Width");
+      VisIt_MeshMetaData_setYLabel(mesh2d, "Height");
+      VisIt_SimulationMetaData_addMesh(md, mesh2d);
+    }
+
+    visit_handle meshVar;
+    if(VisIt_VariableMetaData_alloc(&meshVar) == VISIT_OKAY)
+    {
+      VisIt_VariableMetaData_setName(meshVar, "nodal");
+      VisIt_VariableMetaData_setMeshName(meshVar, "mesh2d");
+      VisIt_VariableMetaData_setType(meshVar, VISIT_VARTYPE_SCALAR);
+      VisIt_VariableMetaData_setCentering(meshVar, VISIT_VARCENTERING_NODE);
+      VisIt_SimulationMetaData_addVariable(md, meshVar);
+    }
+
+    /* Add simulation commands. */
+    const char *cmd_names[] = {"halt", "step", "run"};
+    for(i = 0; i < sizeof(cmd_names)/sizeof(const char *); ++i)
+    {
+      visit_handle cmd = VISIT_INVALID_HANDLE;
+      if(VisIt_CommandMetaData_alloc(&cmd) == VISIT_OKAY)
+      {
+        VisIt_CommandMetaData_setName(cmd, cmd_names[i]);
+        VisIt_SimulationMetaData_addGenericCommand(md, cmd);
+      }
+    }
+  }
+  return md;
+}
+
 void mainLoop(SimulationData &sim)
 {
   int blocking, visitState, err = 0;
   do
   {
     blocking = (sim.runMode == VISIT_SIMMODE_RUNNING) ? 0 : 1;
-
     visitState = VisItDetectInput(blocking, -1);
     /*depending on the result from VisItDetectInput.*/
     if(visitState <= -1)
@@ -118,7 +164,6 @@ void mainLoop(SimulationData &sim)
         std::cerr << "VisIt connected!!!" << std::cout;
         /*register data access callbacks*/
         VisItSetGetMetaData(GetSimulationMetaData, (void*)&sim);
-        VisItSetGetMesh(GetSimulationMesh, (void*)&sim);
       }
       else
         std::cerr << "VisIt failed to connect!!!" << std::cout;
@@ -150,7 +195,7 @@ int main()
   /*instructions for VisIt to connect*/
   VisItInitializeSocketAndDumpSimFile("mysimulation", "InSituVis",
     "/home/abhishek/repositories/insitu/visitlibsim", NULL, NULL, NULL);
-  readInputDeck(sim);
+  //readInputDeck(sim);
   mainLoop(sim);
   return 0;
 }
