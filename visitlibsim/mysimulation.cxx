@@ -1,7 +1,14 @@
+#include <cmath>
 #include <iostream>
 #include <string.h>
 #include <VisItControlInterface_V2.h>
 #include <VisItDataInterface_V2.h>
+
+#define NX 10
+#define NY 10
+#define NZ 10
+#define PI 3.14159265
+#define PERIOD 100
 
 typedef struct
 {
@@ -11,40 +18,64 @@ typedef struct
   int done;
 } SimulationData;
 
-float meshx[] = {0, 1, 2, 3};
-float meshy[] = {0, 1, 2, 3};
-int meshdims[] = {4, 4, 1};
-int meshaxes = 2;
+static float *meshx = new float[NX];
+static float *meshy = new float[NY];
+static float *meshz = new float[NZ];
+
+static float *data = new float[NX*NY*NZ];
+static int meshdims[] = {NX, NY,NZ};
+static int meshaxes = 3;
+
+float calculateVelocityMagnitude(float x, float y, float z, float t)
+{
+  return sin(PI*sqrt(pow(x, 2) + pow(y, 2) + pow(z, 2))+t);
+}
+
+void initMeshMetaData()
+{
+  int xindex, yindex, zindex;
+  for(xindex = 0; xindex < NX; xindex++)
+  {
+    meshx[xindex] = xindex;
+  }
+  for(yindex = 0; yindex < NY; yindex++)
+  {
+    meshy[yindex] = yindex;
+  }
+  for(zindex = 0; zindex < NX; zindex++)
+  {
+    meshz[zindex] = zindex;
+  }
+  int dindex = 0;
+  for(xindex =0; xindex < NX; xindex++)
+    for(yindex = 0; yindex < NY; yindex++)
+      for(zindex = 0; zindex < NZ; zindex++)
+        data[dindex++] = calculateVelocityMagnitude(meshx[xindex], meshy[yindex], meshz[zindex], 0.0f);
+}
 
 visit_handle GetSimulationMesh(int domain, const char * name, void *simData)
 {
   visit_handle mesh = VISIT_INVALID_HANDLE;
   if(VisIt_RectilinearMesh_alloc(&mesh) != VISIT_ERROR)
   {
-    visit_handle xc, yc;
+    visit_handle xc, yc, zc;
     VisIt_VariableData_alloc(&xc);
     VisIt_VariableData_alloc(&yc);
+    VisIt_VariableData_alloc(&zc);
     VisIt_VariableData_setDataF(xc, VISIT_OWNER_SIM, 1, meshdims[0], meshx);
     VisIt_VariableData_setDataF(yc, VISIT_OWNER_SIM, 1, meshdims[1], meshy);
-    VisIt_RectilinearMesh_setCoordsXY(mesh, xc, yc);
+    VisIt_VariableData_setDataF(zc, VISIT_OWNER_SIM, 1, meshdims[2], meshz);
+    VisIt_RectilinearMesh_setCoordsXYZ(mesh, xc, yc, zc);
   }
   return mesh;
 }
-
-int components = 1;
-  int tuples = 4 * 4;
-  float data[] =
-  { 1.0f, 1.0f, 1.0f, 1.0f,
-    1.0f, 2.0f, 2.0f, 1.0f,
-    1.0f, 2.0f, 2.0f, 1.0f,
-    1.0f, 1.0f, 1.0f, 1.0f };
 
 visit_handle GetSimulationVariable(int domain, const char *name, void *simData)
 {
   visit_handle var = VISIT_INVALID_HANDLE;
   if(VisIt_VariableData_alloc(&var) == VISIT_OKAY)
   {
-    VisIt_VariableData_setDataF(var, VISIT_OWNER_SIM, components, tuples, data);
+    VisIt_VariableData_setDataF(var, VISIT_OWNER_SIM, 1, NX*NY*NZ, data);
   }
   return var;
 }
@@ -53,10 +84,12 @@ void simulateOneTimeStep(SimulationData *sim)
 {
   /*simulate one time step*/
   sim->cycle++;
-  data[5] += 0.5;
-  data[6] += 0.5;
-  data[9] += 0.5;
-  data[10] += 0.5;
+  sim->time += 0.1f;
+  int dindex = 0;
+  for(int xindex =0; xindex < NX; xindex++)
+    for(int yindex = 0; yindex < NY; yindex++)
+      for(int zindex = 0; zindex < NZ; zindex++)
+        data[dindex++] = calculateVelocityMagnitude(meshx[xindex], meshy[yindex], meshz[zindex], static_cast<float>(sim->time));
   std::cerr << "Advanced one time step : " << sim->cycle << std::endl;
   VisItTimeStepChanged();
   VisItUpdatePlots();
@@ -96,25 +129,27 @@ visit_handle GetSimulationMetaData(void *simData)
       VisIt_SimulationMetaData_setMode(md, VISIT_SIMMODE_RUNNING);
     VisIt_SimulationMetaData_setCycleTime(md, sim->cycle, sim->time);
 
-    visit_handle mesh2d;
-    if(VisIt_MeshMetaData_alloc(&mesh2d) == VISIT_OKAY)
+    visit_handle mesh3d;
+    if(VisIt_MeshMetaData_alloc(&mesh3d) == VISIT_OKAY)
     {
-      VisIt_MeshMetaData_setName(mesh2d, "mesh2d");
-      VisIt_MeshMetaData_setMeshType(mesh2d, VISIT_MESHTYPE_RECTILINEAR);
-      VisIt_MeshMetaData_setTopologicalDimension(mesh2d, 2);
-      VisIt_MeshMetaData_setSpatialDimension(mesh2d, 2);
-      VisIt_MeshMetaData_setXUnits(mesh2d, "cm");
-      VisIt_MeshMetaData_setXUnits(mesh2d, "cm");
-      VisIt_MeshMetaData_setXLabel(mesh2d, "Width");
-      VisIt_MeshMetaData_setYLabel(mesh2d, "Height");
-      VisIt_SimulationMetaData_addMesh(md, mesh2d);
+      VisIt_MeshMetaData_setName(mesh3d, "mesh3d");
+      VisIt_MeshMetaData_setMeshType(mesh3d, VISIT_MESHTYPE_RECTILINEAR);
+      VisIt_MeshMetaData_setTopologicalDimension(mesh3d, 3);
+      VisIt_MeshMetaData_setSpatialDimension(mesh3d, 3);
+      VisIt_MeshMetaData_setXUnits(mesh3d, "cm");
+      VisIt_MeshMetaData_setXUnits(mesh3d, "cm");
+      VisIt_MeshMetaData_setYUnits(mesh3d, "cm");
+      VisIt_MeshMetaData_setXLabel(mesh3d, "Width");
+      VisIt_MeshMetaData_setYLabel(mesh3d, "Height");
+      VisIt_MeshMetaData_setZLabel(mesh3d, "Length");
+      VisIt_SimulationMetaData_addMesh(md, mesh3d);
     }
 
     visit_handle meshVar;
     if(VisIt_VariableMetaData_alloc(&meshVar) == VISIT_OKAY)
     {
       VisIt_VariableMetaData_setName(meshVar, "nodal");
-      VisIt_VariableMetaData_setMeshName(meshVar, "mesh2d");
+      VisIt_VariableMetaData_setMeshName(meshVar, "mesh3d");
       VisIt_VariableMetaData_setType(meshVar, VISIT_VARTYPE_SCALAR);
       VisIt_VariableMetaData_setCentering(meshVar, VISIT_VARCENTERING_NODE);
       VisIt_SimulationMetaData_addVariable(md, meshVar);
@@ -186,6 +221,7 @@ int main()
 {
   std::cout << "We be simulatin' all day!!!" << std::endl;
   SimulationData sim;
+  initMeshMetaData();
   constructSimulationData(&sim);
   /*Set VisIt directory*/
   VisItSetDirectory("/home/abhishek/big/visit2_12_3.linux-x86_64");
