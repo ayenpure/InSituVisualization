@@ -40,7 +40,7 @@ int components = 1;
     1.0f, 1.0f, 1.0f, 1.0f };
 
 visit_handle GetSimulationVariable(int domain, const char *name, void *simData)
-{ 
+{
   visit_handle var = VISIT_INVALID_HANDLE;
   if(VisIt_VariableData_alloc(&var) == VISIT_OKAY)
   {
@@ -53,6 +53,10 @@ void simulateOneTimeStep(SimulationData *sim)
 {
   /*simulate one time step*/
   sim->cycle++;
+  data[5] += 0.5;
+  data[6] += 0.5;
+  data[9] += 0.5;
+  data[10] += 0.5;
   std::cerr << "Advanced one time step : " << sim->cycle << std::endl;
   VisItTimeStepChanged();
   VisItUpdatePlots();
