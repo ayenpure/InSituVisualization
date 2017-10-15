@@ -31,9 +31,7 @@ visit_handle GetSimulationMesh(int domain, const char * name, void *simData)
   return mesh;
 }
 
-visit_handle GetSimulationVariable(int domain, const char *name, void *simData)
-{
-  int components = 1;
+int components = 1;
   int tuples = 4 * 4;
   float data[] =
   { 1.0f, 1.0f, 1.0f, 1.0f,
@@ -41,6 +39,8 @@ visit_handle GetSimulationVariable(int domain, const char *name, void *simData)
     1.0f, 2.0f, 2.0f, 1.0f,
     1.0f, 1.0f, 1.0f, 1.0f };
 
+visit_handle GetSimulationVariable(int domain, const char *name, void *simData)
+{ 
   visit_handle var = VISIT_INVALID_HANDLE;
   if(VisIt_VariableData_alloc(&var) == VISIT_OKAY)
   {
@@ -49,35 +49,27 @@ visit_handle GetSimulationVariable(int domain, const char *name, void *simData)
   return var;
 }
 
-void simulateOneTimeStep(SimulationData &sim)
+void simulateOneTimeStep(SimulationData *sim)
 {
   /*simulate one time step*/
-  VisItSetGetMesh(GetSimulationMesh, (void*)&sim);
-  VisItSetGetVariable(GetSimulationVariable, (void*)&sim);
+  sim->cycle++;
+  std::cerr << "Advanced one time step : " << sim->cycle << std::endl;
+  VisItTimeStepChanged();
+  VisItUpdatePlots();
 }
 
-void constructSimulationData(SimulationData &sim)
+void constructSimulationData(SimulationData *sim)
 {
   /*construct simulation object*/
-  sim.cycle = 0;
-  sim.time = 0.0f;
-  sim.runMode = 1;
-  sim.done = false;
+  sim->cycle = 0;
+  sim->time = 0.0f;
+  sim->runMode = 1;
+  sim->done = false;
 }
-
-/*void readInputDeck(SimulationData &sim)
-{
-
-}
-
-void dumpVisualization(SimulationData &sim)
-{
-
-}*/
 
 void ControlCommandCallback(const char *cmd, const char *args, void *simData)
 {
-  SimulationData *sim = (SimulationData*)simData;
+  SimulationData *sim = (SimulationData *)simData;
   if(strcmp(cmd, "halt") == 0)
     sim->runMode = VISIT_SIMMODE_STOPPED;
   else if(strcmp(cmd, "step") == 0)
@@ -123,10 +115,9 @@ visit_handle GetSimulationMetaData(void *simData)
       VisIt_VariableMetaData_setCentering(meshVar, VISIT_VARCENTERING_NODE);
       VisIt_SimulationMetaData_addVariable(md, meshVar);
     }
-
-    /* Add simulation commands. */
+    /* Add commands to simulation */
     const char *cmd_names[] = {"halt", "step", "run"};
-    for(i = 0; i < sizeof(cmd_names)/sizeof(const char *); ++i)
+    for(int i = 0; i < sizeof(cmd_names)/sizeof(const char *); ++i)
     {
       visit_handle cmd = VISIT_INVALID_HANDLE;
       if(VisIt_CommandMetaData_alloc(&cmd) == VISIT_OKAY)
@@ -139,12 +130,12 @@ visit_handle GetSimulationMetaData(void *simData)
   return md;
 }
 
-void mainLoop(SimulationData &sim)
+void mainLoop(SimulationData *sim)
 {
   int blocking, visitState, err = 0;
   do
   {
-    blocking = (sim.runMode == VISIT_SIMMODE_RUNNING) ? 0 : 1;
+    blocking = (sim->runMode == VISIT_SIMMODE_RUNNING) ? 0 : 1;
     visitState = VisItDetectInput(blocking, -1);
     /*depending on the result from VisItDetectInput.*/
     if(visitState <= -1)
@@ -162,8 +153,12 @@ void mainLoop(SimulationData &sim)
       if(VisItAttemptToCompleteConnection())
       {
         std::cerr << "VisIt connected!!!" << std::cout;
+        /* Register command callback */
+        VisItSetCommandCallback(ControlCommandCallback,(void*)sim);
         /*register data access callbacks*/
         VisItSetGetMetaData(GetSimulationMetaData, (void*)&sim);
+        VisItSetGetMesh(GetSimulationMesh, (void*)&sim);
+        VisItSetGetVariable(GetSimulationVariable, (void*)&sim);
       }
       else
         std::cerr << "VisIt failed to connect!!!" << std::cout;
@@ -171,23 +166,23 @@ void mainLoop(SimulationData &sim)
     else if(visitState == 2)
     {
       /*VisIt reporting to the engine*/
-      sim.runMode = VISIT_SIMMODE_STOPPED;
+      sim->runMode = VISIT_SIMMODE_STOPPED;
       if(!VisItProcessEngineCommand())
       {
         /*disconnect in case of an error or closed connection*/
         VisItDisconnect();
         /*Start running again if VisIt closes*/
-        sim.runMode = VISIT_SIMMODE_RUNNING;
+        sim->runMode = VISIT_SIMMODE_RUNNING;
       }
     }
-  } while(!sim.done && err == 0);
+  } while(!sim->done && err == 0);
 }
 
 int main()
 {
   std::cout << "We be simulatin' all day!!!" << std::endl;
   SimulationData sim;
-  constructSimulationData(sim);
+  constructSimulationData(&sim);
   /*Set VisIt directory*/
   VisItSetDirectory("/home/abhishek/big/visit2_12_3.linux-x86_64");
   /*init environment variables*/
@@ -196,6 +191,6 @@ int main()
   VisItInitializeSocketAndDumpSimFile("mysimulation", "InSituVis",
     "/home/abhishek/repositories/insitu/visitlibsim", NULL, NULL, NULL);
   //readInputDeck(sim);
-  mainLoop(sim);
+  mainLoop(&sim);
   return 0;
 }
